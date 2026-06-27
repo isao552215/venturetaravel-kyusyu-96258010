@@ -60,7 +60,7 @@
         <p>データを読み込んでいます...</p>
     </div>
 
-    <div id="app-content" class="hidden">
+    <div id="app-content" style="display:none">
         <section class="bg-white p-4 rounded-xl shadow-sm mb-4">
             <h2 class="text-sm font-bold mb-2">全行程WBS進捗</h2>
             <div class="w-full bg-gray-200 rounded-full h-3 mb-2"><div id="wbs-progress-bar" class="bg-blue-500 h-3 rounded-full" style="width:0%"></div></div>
@@ -244,9 +244,13 @@ function buildGetUrl(){
     return u.toString();
 }
 async function gasGet(url){
-    const r=await fetch(url,{method:'GET',mode:'cors',cache:'no-store'});
-    if(!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json();
+    const controller=new AbortController();
+    const tid=setTimeout(()=>controller.abort(),8000);
+    try{
+        const r=await fetch(url,{method:'GET',mode:'cors',cache:'no-store',signal:controller.signal});
+        if(!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+    } finally { clearTimeout(tid); }
 }
 async function gasPost(payload){
     await fetch(GAS_WEB_APP_URL,{method:'POST',mode:'no-cors',body:JSON.stringify(payload)});
@@ -259,12 +263,18 @@ function showError(msg,e){
 }
 
 /* ===== クラウド ===== */
+function showApp(){
+    document.getElementById('initial-loading').style.display='none';
+    const ac=document.getElementById('app-content');
+    ac.classList.remove('hidden');
+    ac.style.display='block';
+}
+
 async function loadFromCloud(isManual=false){
     if(GAS_WEB_APP_URL.includes('ここにURL')){
         appState=JSON.parse(JSON.stringify(fallbackInitialData));
         sortItinerary();
-        document.getElementById('initial-loading').style.display='none';
-        document.getElementById('app-content').style.display='block';
+        showApp();
         renderAll(); return;
     }
     if(isManual) showSync(true);
@@ -274,8 +284,7 @@ async function loadFromCloud(isManual=false){
         if(isFirst){
             appState=JSON.parse(JSON.stringify(fallbackInitialData));
             sortItinerary(); cloudPhotos=[];
-            document.getElementById('initial-loading').style.display='none';
-            document.getElementById('app-content').style.display='block';
+            showApp();
             clearUnsaved(); renderAll();
             await saveToCloud(true);
         } else {
@@ -287,18 +296,16 @@ async function loadFromCloud(isManual=false){
             if(!appState.travelDays)   appState.travelDays=1;
             cloudPhotos=data.photos||[];
             sortItinerary();
-            document.getElementById('initial-loading').style.display='none';
-            document.getElementById('app-content').style.display='block';
+            showApp();
             clearUnsaved(); renderAll();
             if(isManual) showToast('最新データに更新しました');
         }
     } catch(e){
-        // フォールバック
+        // フォールバック（GAS未接続・CORS失敗時もアプリを表示）
         console.warn('[GAS失敗] フォールバックで起動',e.message);
         appState=JSON.parse(JSON.stringify(fallbackInitialData));
         sortItinerary(); cloudPhotos=[];
-        document.getElementById('initial-loading').style.display='none';
-        document.getElementById('app-content').style.display='block';
+        showApp();
         clearUnsaved(); renderAll();
         showToast('オフラインモードで表示中（クラウド未接続）',true);
     } finally {
